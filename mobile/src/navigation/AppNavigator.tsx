@@ -34,6 +34,7 @@ import { BiometricAuthScreen } from "../screens/BiometricAuthScreen";
 import { CreatorProfileScreen } from "../screens/CreatorProfileScreen";
 import { FreelancerDirectoryScreen } from "../screens/FreelancerDirectoryScreen";
 import { ImagePickerScreen } from "../screens/ImagePickerScreen";
+import { ImageEditorScreen } from "../screens/ImageEditorScreen";
 import { MessagingScreen } from "../screens/MessagingScreen";
 import { ProfileScreen } from "../screens/ProfileScreen";
 import { DetailsView } from "../screens/DetailsView";
@@ -280,6 +281,24 @@ export function AppNavigator() {
               maxImages={(route.params as any)?.maxImages ?? 10}
               onBack={() => navigation.goBack()}
               onUploadComplete={() => navigation.goBack()}
+            />
+          )}
+        </Stack.Screen>
+
+        {/* ── Advanced Image Cropper & Filters ───────────────────────────── */}
+        <Stack.Screen
+          name="ImageEditor"
+          options={{ animation: "slide_from_bottom" }}
+        >
+          {({ route, navigation }) => (
+            <ImageEditorScreen
+              imageUri={(route.params as any)?.imageUri}
+              imageWidth={(route.params as any)?.imageWidth}
+              imageHeight={(route.params as any)?.imageHeight}
+              fileSize={(route.params as any)?.fileSize}
+              mode={(route.params as any)?.mode ?? "avatar"}
+              onBack={() => navigation.goBack()}
+              onComplete={() => navigation.goBack()}
             />
           )}
         </Stack.Screen>
