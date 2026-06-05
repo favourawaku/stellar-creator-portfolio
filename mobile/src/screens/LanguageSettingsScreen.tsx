@@ -49,7 +49,8 @@ interface LocaleRowProps {
 
 function LocaleRow({ locale, isSelected, onSelect }: LocaleRowProps) {
   const info = LOCALE_INFO[locale];
-  const scaleAnim = React.useRef(new Animated.Value(1)).current;
+  const scaleAnimRef = React.useRef(new Animated.Value(1));
+  const scaleAnim = scaleAnimRef.current;
 
   const handlePress = useCallback(async () => {
     // Bounce animation

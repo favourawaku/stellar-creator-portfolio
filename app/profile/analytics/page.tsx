@@ -1,3 +1,5 @@
+'use client'
+
 import dynamic from 'next/dynamic'
 import { Header } from '@/components/header'
 import { Footer } from '@/components/footer'

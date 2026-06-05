@@ -1,4 +1,4 @@
-#[path = "db/mod.rs"]
+#[path = "database/db/mod.rs"]
 pub mod db;
 
 use std::env;

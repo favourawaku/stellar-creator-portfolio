@@ -14,7 +14,7 @@
 
 use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer};
 use actix_ws::Message as WsMessage;
-use futures::StreamExt;
+use futures::{StreamExt, SinkExt};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, Barrier};
@@ -69,7 +69,7 @@ async fn test_websocket_connection_and_echo() {
     let (tx, mut rx) = mpsc::unbounded_channel::<String>();
     let tx_data = web::Data::new(tx);
 
-    // Start the test server
+    // Start the test server with a known port
     let server = HttpServer::new(move || {
         App::new()
             .app_data(barrier_data.clone())
@@ -77,17 +77,17 @@ async fn test_websocket_connection_and_echo() {
             .route("/ws", web::get().to(ws_handler))
     })
     .bind(("127.0.0.1", 0))
-    .expect("Failed to bind test server")
-    .run();
+    .expect("Failed to bind test server");
 
-    let addr = server.addrs()[0];
+    let server_addr = server.addrs()[0];
+    let server = server.run();
     let server_handle = actix_web::rt::spawn(server);
 
     // Give the server a moment to start
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     // Connect WebSocket client
-    let url = format!("ws://127.0.0.1:{}/ws", addr.port());
+    let url = format!("ws://127.0.0.1:{}/ws", server_addr.port());
     let (mut ws_stream, _) = tokio_tungstenite::connect_async(&url)
         .await
         .expect("Failed to connect WebSocket client");
@@ -151,15 +151,15 @@ async fn test_websocket_multiple_messages() {
             .route("/ws", web::get().to(ws_handler))
     })
     .bind(("127.0.0.1", 0))
-    .expect("Failed to bind test server")
-    .run();
+    .expect("Failed to bind test server");
 
-    let addr = server.addrs()[0];
+    let server_addr = server.addrs()[0];
+    let server = server.run();
     let server_handle = actix_web::rt::spawn(server);
 
     tokio::time::sleep(Duration::from_millis(50)).await;
 
-    let url = format!("ws://127.0.0.1:{}/ws", addr.port());
+    let url = format!("ws://127.0.0.1:{}/ws", server_addr.port());
     let (mut ws_stream, _) = tokio_tungstenite::connect_async(&url)
         .await
         .expect("Failed to connect WebSocket client");
@@ -219,15 +219,15 @@ async fn test_websocket_connection_close() {
             .route("/ws", web::get().to(ws_handler))
     })
     .bind(("127.0.0.1", 0))
-    .expect("Failed to bind test server")
-    .run();
+    .expect("Failed to bind test server");
 
-    let addr = server.addrs()[0];
+    let server_addr = server.addrs()[0];
+    let server = server.run();
     let server_handle = actix_web::rt::spawn(server);
 
     tokio::time::sleep(Duration::from_millis(50)).await;
 
-    let url = format!("ws://127.0.0.1:{}/ws", addr.port());
+    let url = format!("ws://127.0.0.1:{}/ws", server_addr.port());
     let (mut ws_stream, _) = tokio_tungstenite::connect_async(&url)
         .await
         .expect("Failed to connect WebSocket client");

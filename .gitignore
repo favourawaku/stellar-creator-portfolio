@@ -16,10 +16,58 @@ node_modules/
 .next/
 backend/target/
 .DS_Store
-.DS_Store
 target/
 backend/target/
 **/test_snapshots/
 *.log
 .idea/
 .vscode/
+
+# TypeScript build cache
+tsconfig.tsbuildinfo
+
+# Build artifacts and temporary files
+*.tmp
+*.temp
+*~
+dist/
+build/
+coverage/
+.nyc_output/
+logs/
+*.log.*
+.cache/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+
+# Dependency directories
+jspm_packages/
+
+# Optional npm cache directory
+.npm
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+.env

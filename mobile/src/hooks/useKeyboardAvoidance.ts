@@ -21,8 +21,10 @@ export interface KeyboardMetrics {
 export const useKeyboardAvoidance = (): KeyboardMetrics => {
   const [isVisible, setIsVisible] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const animatedValue = useRef(new Animated.Value(0)).current;
+  const animatedValueRef = useRef(new Animated.Value(0));
   const { height: screenHeight } = useWindowDimensions();
+
+  const animatedValue = animatedValueRef.current;
 
   useEffect(() => {
     const keyboardWillShow = (e: KeyboardEvent) => {
@@ -71,7 +73,8 @@ export const useKeyboardAvoidancePosition = (
   baseOffset: number = 0,
 ): Animated.Value => {
   const { animatedValue } = useKeyboardAvoidance();
-  const positionValue = useRef(new Animated.Value(baseOffset)).current;
+  const positionValueRef = useRef(new Animated.Value(baseOffset));
+  const positionValue = positionValueRef.current;
 
   useEffect(() => {
     Animated.parallel([

@@ -188,7 +188,8 @@ export function LoginScreen({
   const { status, session, error, connect, disconnect, resetError } = useWalletAuth();
 
   // Fade-in hero on mount
-  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const fadeAnimRef = useRef(new Animated.Value(0));
+  const fadeAnim = fadeAnimRef.current;
   useEffect(() => {
     Animated.timing(fadeAnim, {
       toValue: 1,

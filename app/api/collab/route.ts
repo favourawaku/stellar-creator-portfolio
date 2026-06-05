@@ -11,7 +11,7 @@ let setupWSConnection: (ws: WebSocket, req: Request, opts?: { docName?: string }
 
 async function getSetup() {
   if (!setupWSConnection) {
-    const mod = await import('y-websocket/bin/utils.js')
+    const mod = await import('y-websocket/bin/utils')
     setupWSConnection = mod.setupWSConnection
   }
   return setupWSConnection

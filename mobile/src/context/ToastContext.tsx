@@ -19,6 +19,10 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({ children }) => {
     return `toast-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }, []);
 
+  const hideToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((toast) => toast.id !== id));
+  }, []);
+
   const showToast = useCallback(
     (message: string, type: ToastType, duration: number = 3000): string => {
       const id = generateId();
@@ -41,7 +45,7 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({ children }) => {
 
       return id;
     },
-    [generateId],
+    [generateId, hideToast],
   );
 
   const showActionToast = useCallback(
@@ -74,12 +78,8 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({ children }) => {
 
       return id;
     },
-    [generateId],
+    [generateId, hideToast],
   );
-
-  const hideToast = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((toast) => toast.id !== id));
-  }, []);
 
   const clearAllToasts = useCallback(() => {
     setToasts([]);

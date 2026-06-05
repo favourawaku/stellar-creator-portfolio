@@ -101,11 +101,9 @@ pub struct YieldAccrual {
     pub principal: i128,
     pub accrued: i128,
     pub last_updated: u64,
-#[contracttype]
-enum DataKey {
-    Escrow(u64),
-    EscrowCounter,
 }
+
+
 
 #[contract]
 pub struct EscrowContract;

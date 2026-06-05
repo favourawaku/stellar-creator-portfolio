@@ -8,7 +8,9 @@
     "android":        "expo run:android",
     "ios":            "expo run:ios",
     "build:android":  "eas build --platform android",
-    "build:ios":      "eas build --platform ios"
+    "build:ios":      "eas build --platform ios",
+    "test":           "jest",
+    "test:watch":     "jest --watch"
   },
   "dependencies": {
     "@nozbe/watermelondb":               "^0.28.0",
