@@ -1,0 +1,37 @@
+name: Strip backend/target from git history
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  strip:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install git-filter-repo
+        run: pip install git-filter-repo
+
+      - name: Remove backend/target from all commits
+        run: |
+          git filter-repo --path backend/target --invert-paths --force
+          echo "History rewritten. Commit count: $(git log --oneline | wc -l)"
+          echo "backend/target still present: $(git ls-files backend/target | wc -l) files (expect 0)"
+
+      - name: Verify backend source code is intact
+        run: |
+          test -d backend || (echo "ERROR: backend/ directory missing!" && exit 1)
+          echo "backend/ files present: $(git ls-files backend | wc -l)"
+
+      - name: Force-push cleaned main
+        run: |
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+          git push origin HEAD:main --force
+          echo "Done. backend/target has been removed from all $(git log --oneline | wc -l) commits."
