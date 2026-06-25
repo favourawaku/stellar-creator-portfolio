@@ -28,6 +28,7 @@ struct Config {
     bounty_contract_id: String,
     freelancer_contract_id: String,
     escrow_contract_id: String,
+    indexer_stellar_account_id: String,
     /// How many ledgers to fetch per poll
     ledger_chunk: u32,
     /// Seconds between polls
@@ -43,6 +44,8 @@ impl Config {
             bounty_contract_id: std::env::var("BOUNTY_CONTRACT_ID").unwrap_or_default(),
             freelancer_contract_id: std::env::var("FREELANCER_CONTRACT_ID").unwrap_or_default(),
             escrow_contract_id: std::env::var("ESCROW_CONTRACT_ID").unwrap_or_default(),
+            indexer_stellar_account_id: std::env::var("INDEXER_STELLAR_ACCOUNT_ID")
+                .unwrap_or_else(|_| "GBEXPIREDDDEADLINE123456789012345678901234567890123".into()),
             ledger_chunk: std::env::var("INDEXER_LEDGER_CHUNK")
                 .ok()
                 .and_then(|v| v.parse().ok())
@@ -451,19 +454,21 @@ async fn handle_bounty_event(pool: &PgPool, event: &SorobanEvent, name: &str) ->
             let id = value["id"].as_i64().unwrap_or(0);
             let title = value["title"].as_str().unwrap_or("").to_string();
             let budget = value["budget"].as_i64().unwrap_or(0);
+            let deadline = value["deadline"].as_u64().unwrap_or(0);
             sqlx::query(
-                "INSERT INTO chain_bounties (chain_id, title, budget, status, ledger, event_id)
-                 VALUES ($1, $2, $3, 'OPEN', $4, $5)
+                "INSERT INTO chain_bounties (chain_id, title, budget, deadline, status, ledger, event_id)
+                 VALUES ($1, $2, $3, $4, 'OPEN', $5, $6)
                  ON CONFLICT (chain_id) DO NOTHING",
             )
             .bind(id)
             .bind(&title)
             .bind(budget)
+            .bind(deadline as i64)
             .bind(event.ledger as i64)
             .bind(&event.id)
             .execute(pool)
             .await?;
-            info!("Indexed bounty created: id={id} title={title}");
+            info!("Indexed bounty created: id={id} title={title} deadline={deadline}");
         }
         "bounty_applied" => {
             let bounty_id = value["bounty_id"].as_i64().unwrap_or(0);
@@ -638,6 +643,7 @@ async fn ensure_schema(pool: &PgPool) -> Result<()> {
             chain_id   BIGINT PRIMARY KEY,
             title      TEXT NOT NULL,
             budget     BIGINT NOT NULL,
+            deadline   BIGINT NOT NULL DEFAULT 0,
             status     TEXT NOT NULL DEFAULT 'OPEN',
             ledger     BIGINT NOT NULL,
             event_id   TEXT NOT NULL,
@@ -677,6 +683,40 @@ async fn ensure_schema(pool: &PgPool) -> Result<()> {
     .execute(pool)
     .await
     .context("Failed to bootstrap indexer schema")?;
+    Ok(())
+}
+
+async fn check_and_expire_bounties(pool: &PgPool, cfg: &Config) -> Result<()> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+
+    // Select all OPEN bounties that have passed their deadline
+    let expired: Vec<(i64,)> = sqlx::query_as(
+        "SELECT chain_id FROM chain_bounties WHERE status = 'OPEN' AND deadline > 0 AND deadline < $1"
+    )
+    .bind(now)
+    .fetch_all(pool)
+    .await?;
+
+    for (bounty_id,) in expired {
+        info!("Bounty {bounty_id} has expired. Enqueuing cancel & refund transaction.");
+
+        // Queue a transaction to invoke check_and_expire_bounty on the contract
+        sqlx::query(
+            r#"INSERT INTO "TransactionQueue" (id, "accountId", "contractId", method, args, status, attempts, "maxAttempts", "createdAt", "updatedAt")
+               VALUES ($1, $2, $3, 'check_and_expire_bounty', $4, 'pending', 0, 3, NOW(), NOW())
+               ON CONFLICT (id) DO NOTHING"#
+        )
+        .bind(format!("expire-bounty-{bounty_id}"))
+        .bind(&cfg.indexer_stellar_account_id)
+        .bind(&cfg.bounty_contract_id)
+        .bind(serde_json::json!([bounty_id, cfg.escrow_contract_id]))
+        .execute(pool)
+        .await?;
+    }
+
     Ok(())
 }
 
@@ -835,6 +875,11 @@ async fn main() -> Result<()> {
             Err(e) => {
                 error!("RPC poll failed: {e:#}");
             }
+        }
+
+        // Run background check for expired bounties
+        if let Err(e) = check_and_expire_bounties(&pool, &cfg).await {
+            error!("Failed to check and expire bounties: {e:#}");
         }
 
         tokio::time::sleep(Duration::from_secs(cfg.poll_interval_secs)).await;

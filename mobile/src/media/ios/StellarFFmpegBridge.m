@@ -61,6 +61,7 @@ RCT_EXPORT_METHOD(trimVideo:(NSDictionary *)options
     // -ss before -i for fast seek; -to is relative to -ss when placed after
     NSString* cmd = [NSString stringWithFormat:
         @"-y -ss %@ -to %@ -i \"%@\" "
+        @"-vf \"scale='if(gt(ih,iw),1080,1920)':'if(gt(ih,iw),1920,1080)'\" -r 30 "
         @"-c:v %@ -b:v %dk "
         @"-c:a aac -b:a %dk "
         @"-movflags +faststart "   // moov atom at front for streaming

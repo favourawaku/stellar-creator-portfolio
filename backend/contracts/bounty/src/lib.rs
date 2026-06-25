@@ -1,8 +1,23 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, Address, Env, String, Symbol, Vec,
+    contract, contractclient, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String, Symbol, Vec,
 };
+
+/// Bounty Error Codes
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum BountyError {
+    DeadlineNotPassed = 1,
+    AlreadyProcessed = 2,
+}
+
+/// Escrow Contract Client Interface
+#[contractclient(name = "EscrowContractClient")]
+pub trait EscrowContractTrait {
+    fn refund_expired_bounty(env: Env, bounty_id: u64, bounty_contract: Address) -> bool;
+}
 
 /// Bounty Status Enum
 #[derive(Clone, Copy, PartialEq)]
@@ -29,6 +44,7 @@ pub struct Bounty {
     pub selected_freelancer: Option<Address>,
     pub created_at: u64,
     pub completed_at: Option<u64>,
+    pub escrow_id: u64,
 }
 
 /// Bounty Application Struct
@@ -80,6 +96,7 @@ impl BountyContract {
             selected_freelancer: None,
             created_at: env.ledger().timestamp(),
             completed_at: None,
+            escrow_id: 0,
         };
 
         let bounty_key = (Symbol::new(&env, "bounty"), bounty_id);
@@ -306,6 +323,51 @@ impl BountyContract {
         }
 
         applications
+    }
+
+    pub fn link_escrow(env: Env, bounty_id: u64, escrow_id: u64) -> bool {
+        let bounty_key = (Symbol::new(&env, "bounty"), bounty_id);
+        let mut bounty = env
+            .storage()
+            .persistent()
+            .get::<(Symbol, u64), Bounty>(&bounty_key)
+            .expect("Bounty not found");
+        bounty.creator.require_auth();
+        bounty.escrow_id = escrow_id;
+        env.storage().persistent().set(&bounty_key, &bounty);
+        true
+    }
+
+    pub fn check_and_expire_bounty(env: Env, bounty_id: u64, escrow_contract: Address) -> bool {
+        let bounty_key = (Symbol::new(&env, "bounty"), bounty_id);
+        let mut bounty = env
+            .storage()
+            .persistent()
+            .get::<(Symbol, u64), Bounty>(&bounty_key)
+            .expect("Bounty not found");
+
+        if env.ledger().timestamp() <= bounty.deadline {
+            panic!("Deadline not passed");
+        }
+        if bounty.status != BountyStatus::Open {
+            panic!("Already processed");
+        }
+
+        // Cancel bounty
+        bounty.status = BountyStatus::Cancelled;
+        env.storage().persistent().set(&bounty_key, &bounty);
+
+        // Trigger escrow refund
+        let escrow_client = EscrowContractClient::new(&env, &escrow_contract);
+        escrow_client.refund_expired_bounty(&bounty_id, &env.current_contract_address());
+
+        // Emit events
+        env.events().publish(
+            (symbol_short!("bounty"), symbol_short!("expired")),
+            (bounty_id,),
+        );
+
+        true
     }
 }
 

@@ -8,7 +8,8 @@ export type AuditAction =
   | 'user.suspend' | 'user.activate' | 'user.delete' | 'user.role_change'
   | 'bounty.approve' | 'bounty.flag' | 'bounty.delete'
   | 'report.resolve' | 'report.dismiss' | 'report.remove' | 'report.escalate'
-  | 'verification.approve' | 'verification.revoke';
+  | 'verification.approve' | 'verification.revoke'
+  | 'db.backup' | 'db.restore_drill';
 
 export interface AdminUser {
   id: string;
@@ -159,6 +160,8 @@ export const mockAuditLogs: AuditLog[] = [
   { id: 'a3', action: 'bounty.flag', adminName: 'Admin', targetId: 'b3', targetLabel: 'Social Media Campaign Content', timestamp: '2026-03-20T09:15:00Z', note: 'Flagged pending investigation' },
   { id: 'a4', action: 'verification.approve', adminName: 'Admin', targetId: 'u2', targetLabel: 'Maya Patel', timestamp: '2026-01-20T09:00:00Z' },
   { id: 'a5', action: 'report.resolve', adminName: 'Admin', targetId: 'r4', targetLabel: 'Budget report on API bounty', timestamp: '2026-03-16T11:00:00Z', note: 'Reviewed — budget is valid for scope' },
+  { id: 'a6', action: 'db.backup', adminName: 'System', targetId: 'db-prod', targetLabel: 'PostgreSQL Production', timestamp: '2026-06-25T02:00:00Z', note: 'Daily WAL-G basebackup successfully completed' },
+  { id: 'a7', action: 'db.restore_drill', adminName: 'System', targetId: 'db-test', targetLabel: 'PostgreSQL Restore Drill', timestamp: '2026-06-01T04:12:00Z', note: 'Monthly restore drill completed. Smoke tests passed (Duration: 245s, Size: 20.4GB)' },
 ];
 
 // ── Helpers ────────────────────────────────────────────────────────────────────

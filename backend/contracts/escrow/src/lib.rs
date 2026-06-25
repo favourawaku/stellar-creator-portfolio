@@ -276,6 +276,39 @@ impl EscrowContract {
         true
     }
 
+    /// Refund an expired bounty's escrow to the payer. Called by the bounty contract when expiring.
+    pub fn refund_expired_bounty(env: Env, bounty_id: u64, bounty_contract: Address) -> bool {
+        bounty_contract.require_auth();
+
+        let escrow_id = Self::get_escrow_id_for_bounty(env.clone(), bounty_id);
+        assert!(escrow_id > 0, "No escrow for bounty");
+
+        let key = (Symbol::new(&env, "escrow"), escrow_id);
+        let mut escrow = env
+            .storage()
+            .persistent()
+            .get::<(Symbol, u64), EscrowAccount>(&key)
+            .expect("Escrow not found");
+
+        assert!(escrow.status == EscrowStatus::Active, "Escrow not active");
+
+        // Transfer funds back to the creator (payer)
+        TokenClient::new(&env, &escrow.token)
+            .transfer(&env.current_contract_address(), &escrow.payer, &escrow.amount);
+
+        escrow.status = EscrowStatus::Refunded;
+        escrow.released_at = Some(env.ledger().timestamp());
+        env.storage().persistent().set(&key, &escrow);
+
+        // Emit escrow_refunded event
+        env.events().publish(
+            (symbol_short!("escrow"), symbol_short!("refunded")),
+            (escrow_id, bounty_id, escrow.payer.clone(), escrow.amount),
+        );
+
+        true
+    }
+
     /// Mark escrow as disputed. Either party may raise a dispute.
     pub fn dispute_escrow(env: Env, authorizer: Address, escrow_id: u64) -> bool {
         authorizer.require_auth();

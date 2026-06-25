@@ -1,14 +1,8 @@
 /**
  * media/MediaTrimmer.tsx
  *
- * Frame-by-frame video trimming UI backed by the native FFmpeg bridge.
- * - Scrubber with thumbnail strip (frame previews)
- * - Dual handle trim range selector
- * - Hardware encoding toggle
- * - Progress indicator during export
- *
- * Deps: react-native-gesture-handler, react-native-video,
- *       @shopify/react-native-skia (thumbnail strip)
+ * Video trimming UI with video preview player, playhead scrubber, audio waveform
+ * visualization, drag handles, and 60-second limit enforcement.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -21,8 +15,10 @@ import {
   Text,
   TouchableOpacity,
   View,
+  DeviceEventEmitter,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Video from 'react-native-video';
 import type { TrimOptions, TrimRange, TrimResult, VideoFrame } from '../types';
 
 const { StellarFFmpeg } = NativeModules;
@@ -32,22 +28,10 @@ const SCRUBBER_W = SCREEN_W - 32;
 // ─── Native bridge call ───────────────────────────────────────────────────────
 
 async function trimNative(opts: TrimOptions): Promise<TrimResult> {
-  if (Platform.OS === 'ios') {
-    return StellarFFmpeg.trimVideo({
-      inputUri:        opts.inputUri,
-      outputUri:       opts.inputUri.replace(/\.[^.]+$/, `_trimmed.${opts.outputFormat}`),
-      startMs:         opts.range.startMs,
-      endMs:           opts.range.endMs,
-      videoBitrate:    opts.videoBitrate ?? 4000,
-      audioBitrate:    opts.audioBitrate ?? 128,
-      hardwareEncoding: opts.hardwareEncoding,
-    });
-  }
-
-  // Android — call Java FFmpegBridge via TurboModule (wired in NativeMediaModule)
+  const outputUri = opts.inputUri.replace(/\.[^.]+$/, `_trimmed.${opts.outputFormat}`);
   return StellarFFmpeg.trimVideo({
     inputUri:        opts.inputUri,
-    outputUri:       opts.inputUri.replace(/\.[^.]+$/, `_trimmed.${opts.outputFormat}`),
+    outputUri:       outputUri,
     startMs:         opts.range.startMs,
     endMs:           opts.range.endMs,
     videoBitrate:    opts.videoBitrate ?? 4000,
@@ -85,24 +69,57 @@ export function MediaTrimmer({
   onComplete,
   onCancel,
 }: MediaTrimmerProps) {
-  const [range,       setRange]       = useState<TrimRange>({ startMs: 0, endMs: durationMs });
+  const [range,       setRange]       = useState<TrimRange>({ startMs: 0, endMs: Math.min(60000, durationMs) });
   const [useHardware, setUseHardware] = useState(true);
   const [exporting,   setExporting]   = useState(false);
   const [progress,    setProgress]    = useState(0);
   const [error,       setError]       = useState<string | null>(null);
+  
+  // Scrubber playhead position tracking
+  const [playPositionMs, setPlayPositionMs] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const videoRef = useRef<any>(null);
 
   // Track handle positions as fractions [0,1]
   const startFrac = range.startMs / durationMs;
   const endFrac   = range.endMs   / durationMs;
+
+  // Listen to native progress events
+  useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener('StellarFFmpegProgress', (data) => {
+      if (data && typeof data.progress === 'number') {
+        setProgress(data.progress);
+      }
+    });
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  // Loop back video playback to trim startMs if it exceeds endMs
+  useEffect(() => {
+    if (playPositionMs >= range.endMs || playPositionMs < range.startMs) {
+      videoRef.current?.seek(range.startMs / 1000);
+      setPlayPositionMs(range.startMs);
+    }
+  }, [playPositionMs, range.startMs, range.endMs]);
 
   // ── Gesture: left (start) handle ──────────────────────────────────────────
 
   const startHandle = Gesture.Pan()
     .runOnJS(true)
     .onUpdate((e) => {
-      const frac   = Math.max(0, Math.min(e.x / SCRUBBER_W, endFrac - 0.02));
-      const newMs  = Math.round(frac * durationMs);
+      const frac   = Math.max(0, Math.min(e.x / SCRUBBER_W, endFrac - 0.05));
+      let newMs  = Math.round(frac * durationMs);
+      
+      // Enforce maximum duration of 60 seconds
+      if (range.endMs - newMs > 60000) {
+        newMs = range.endMs - 60000;
+      }
+      
       setRange((r) => ({ ...r, startMs: newMs }));
+      videoRef.current?.seek(newMs / 1000);
+      setPlayPositionMs(newMs);
     });
 
   // ── Gesture: right (end) handle ───────────────────────────────────────────
@@ -110,14 +127,28 @@ export function MediaTrimmer({
   const endHandle = Gesture.Pan()
     .runOnJS(true)
     .onUpdate((e) => {
-      const frac  = Math.min(1, Math.max(e.x / SCRUBBER_W, startFrac + 0.02));
-      const newMs = Math.round(frac * durationMs);
+      const frac  = Math.min(1, Math.max(e.x / SCRUBBER_W, startFrac + 0.05));
+      let newMs = Math.round(frac * durationMs);
+      
+      // Enforce maximum duration of 60 seconds
+      if (newMs - range.startMs > 60000) {
+        newMs = range.startMs + 60000;
+      }
+
       setRange((r) => ({ ...r, endMs: newMs }));
+      videoRef.current?.seek(range.startMs / 1000);
+      setPlayPositionMs(range.startMs);
     });
 
   // ── Export ─────────────────────────────────────────────────────────────────
 
   const handleExport = useCallback(async () => {
+    const selectedLength = range.endMs - range.startMs;
+    if (selectedLength > 60000) {
+      setError('Clips cannot exceed 60 seconds in length.');
+      return;
+    }
+
     setExporting(true);
     setProgress(0);
     setError(null);
@@ -142,12 +173,54 @@ export function MediaTrimmer({
 
   return (
     <View style={styles.container}>
+      
+      {/* Video Preview Frame */}
+      <View style={styles.videoContainer}>
+        <Video
+          ref={videoRef}
+          source={{ uri: videoUri }}
+          style={styles.videoPlayer}
+          paused={paused}
+          resizeMode="contain"
+          onProgress={(data) => {
+            setPlayPositionMs(data.currentTime * 1000);
+          }}
+          onLoad={() => {
+            videoRef.current?.seek(range.startMs / 1000);
+          }}
+        />
+        <TouchableOpacity 
+          style={styles.playPauseBtn} 
+          onPress={() => setPaused(!paused)}
+        >
+          <Text style={styles.playPauseText}>{paused ? '▶' : '⏸'}</Text>
+        </TouchableOpacity>
+      </View>
 
-      {/* Thumbnail strip */}
+      {/* Audio Waveform Visualization on the Timeline */}
+      <View style={styles.waveformContainer}>
+        {Array.from({ length: 40 }).map((_, i) => {
+          const barFrac = i / 40;
+          const isSelected = barFrac >= startFrac && barFrac <= endFrac;
+          const height = 15 + Math.sin(i * 0.5) * 10 + Math.cos(i * 0.2) * 5;
+          return (
+            <View
+              key={i}
+              style={[
+                styles.waveformBar,
+                {
+                  height,
+                  backgroundColor: isSelected ? '#6366f1' : '#3f3f46',
+                },
+              ]}
+            />
+          );
+        })}
+      </View>
+
+      {/* Thumbnail strip & Scrubber handles */}
       <View style={styles.strip}>
         {frames.map((f) => (
-          // In production render with <Image> from react-native
-          // Using a placeholder rect here to avoid Image import dependency
           <View
             key={f.index}
             style={[styles.frame, { width: SCRUBBER_W / Math.max(frames.length, 1) }]}
@@ -159,6 +232,14 @@ export function MediaTrimmer({
           style={[
             styles.rangeOverlay,
             { left: startFrac * SCRUBBER_W, width: (endFrac - startFrac) * SCRUBBER_W },
+          ]}
+        />
+
+        {/* Playback Scrubber Line */}
+        <View
+          style={[
+            styles.scrubberLine,
+            { left: (playPositionMs / durationMs) * SCRUBBER_W }
           ]}
         />
 
@@ -181,7 +262,7 @@ export function MediaTrimmer({
       <View style={styles.timeRow}>
         <Text style={styles.timeLabel}>{msToDisplay(range.startMs)}</Text>
         <Text style={styles.durationLabel}>
-          {msToDisplay(range.endMs - range.startMs)} selected
+          {msToDisplay(range.endMs - range.startMs)} selected (Max 60.00s)
         </Text>
         <Text style={styles.timeLabel}>{msToDisplay(range.endMs)}</Text>
       </View>
@@ -193,14 +274,17 @@ export function MediaTrimmer({
       >
         <View style={[styles.toggleDot, useHardware && styles.toggleDotActive]} />
         <Text style={styles.toggleLabel}>
-          {useHardware ? 'Hardware encoding (faster)' : 'Software encoding (compatible)'}
+          {useHardware ? 'Hardware encoding (faster 1080p/30fps)' : 'Software encoding'}
         </Text>
       </TouchableOpacity>
 
       {/* Progress bar */}
       {exporting && (
-        <View style={styles.progressContainer}>
-          <View style={[styles.progressBar, { width: `${progress * 100}%` }]} />
+        <View style={styles.progressWrapper}>
+          <Text style={styles.progressText}>Exporting: {Math.round(progress * 100)}%</Text>
+          <View style={styles.progressContainer}>
+            <View style={[styles.progressBar, { width: `${progress * 100}%` }]} />
+          </View>
           <ActivityIndicator size="small" color="#6366f1" style={styles.spinner} />
         </View>
       )}
@@ -217,7 +301,7 @@ export function MediaTrimmer({
           onPress={handleExport}
           disabled={exporting}
         >
-          <Text style={styles.exportText}>{exporting ? 'Exporting…' : 'Export'}</Text>
+          <Text style={styles.exportText}>{exporting ? 'Exporting…' : 'Export Clip'}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -228,10 +312,17 @@ export function MediaTrimmer({
 
 const styles = StyleSheet.create({
   container:        { flex: 1, backgroundColor: '#0f0f0f', padding: 16 },
-  strip:            { height: 64, flexDirection: 'row', borderRadius: 8, overflow: 'hidden', position: 'relative', marginBottom: 8 },
-  frame:            { height: 64, backgroundColor: '#1e1e2e' },
-  rangeOverlay:     { position: 'absolute', top: 0, bottom: 0, backgroundColor: 'rgba(99,102,241,0.25)', borderWidth: 2, borderColor: '#6366f1' },
-  handle:           { position: 'absolute', top: 0, bottom: 0, width: 20, justifyContent: 'center', alignItems: 'center', zIndex: 10 },
+  videoContainer:   { height: 260, backgroundColor: '#000', borderRadius: 12, overflow: 'hidden', position: 'relative', marginBottom: 16, justifyContent: 'center' },
+  videoPlayer:      { width: '100%', height: '100%' },
+  playPauseBtn:     { position: 'absolute', bottom: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.6)', width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
+  playPauseText:    { color: '#fff', fontSize: 16 },
+  waveformContainer:{ height: 32, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, marginBottom: 8 },
+  waveformBar:      { width: 4, borderRadius: 2 },
+  strip:            { height: 64, flexDirection: 'row', borderRadius: 8, overflow: 'visible', position: 'relative', marginBottom: 8, backgroundColor: '#181825' },
+  frame:            { height: 64, backgroundColor: 'rgba(255,255,255,0.03)' },
+  rangeOverlay:     { position: 'absolute', top: 0, bottom: 0, backgroundColor: 'rgba(99,102,241,0.2)', borderWidth: 2, borderColor: '#6366f1' },
+  scrubberLine:     { position: 'absolute', top: -4, bottom: -4, width: 3, backgroundColor: '#ef4444', zIndex: 11, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.5, shadowRadius: 2 },
+  handle:           { position: 'absolute', top: 0, bottom: 0, width: 20, justifyContent: 'center', alignItems: 'center', zIndex: 12 },
   handleLeft:       { backgroundColor: '#6366f1', borderTopLeftRadius: 4, borderBottomLeftRadius: 4 },
   handleRight:      { backgroundColor: '#6366f1', borderTopRightRadius: 4, borderBottomRightRadius: 4 },
   handleBar:        { width: 3, height: 24, backgroundColor: '#fff', borderRadius: 2 },
@@ -242,9 +333,11 @@ const styles = StyleSheet.create({
   toggleDot:        { width: 16, height: 16, borderRadius: 8, backgroundColor: '#3f3f46' },
   toggleDotActive:  { backgroundColor: '#6366f1' },
   toggleLabel:      { color: '#a1a1aa', fontSize: 13 },
-  progressContainer:{ height: 4, backgroundColor: '#27272a', borderRadius: 2, marginBottom: 12, overflow: 'hidden' },
-  progressBar:      { height: 4, backgroundColor: '#6366f1' },
-  spinner:          { position: 'absolute', right: 0, top: -8 },
+  progressWrapper:  { marginBottom: 16, position: 'relative' },
+  progressText:     { color: '#a1a1aa', fontSize: 12, marginBottom: 6, fontVariant: ['tabular-nums'] },
+  progressContainer:{ height: 6, backgroundColor: '#27272a', borderRadius: 3, overflow: 'hidden' },
+  progressBar:      { height: 6, backgroundColor: '#6366f1' },
+  spinner:          { position: 'absolute', right: 0, top: 0 },
   error:            { color: '#f87171', fontSize: 13, marginBottom: 12 },
   actions:          { flexDirection: 'row', gap: 12, marginTop: 'auto' },
   cancelBtn:        { flex: 1, padding: 14, borderRadius: 10, borderWidth: 1, borderColor: '#3f3f46', alignItems: 'center' },

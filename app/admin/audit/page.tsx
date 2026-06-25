@@ -18,6 +18,8 @@ const ACTION_LABELS: Record<string, string> = {
   'report.dismiss': 'Dismissed report',
   'verification.approve': 'Approved verification',
   'verification.revoke': 'Revoked verification',
+  'db.backup': 'Database backup',
+  'db.restore_drill': 'Restore drill test',
 };
 
 const ACTION_COLORS: Record<string, string> = {
@@ -32,6 +34,8 @@ const ACTION_COLORS: Record<string, string> = {
   'verification.revoke': 'text-amber-500',
   'report.dismiss': 'text-muted-foreground',
   'user.role_change': 'text-blue-500',
+  'db.backup': 'text-teal-500',
+  'db.restore_drill': 'text-indigo-500',
 };
 
 function formatTimestamp(iso: string) {
