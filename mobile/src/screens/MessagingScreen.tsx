@@ -37,6 +37,7 @@ import {
   View,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import { trigger as triggerHaptic } from '../haptics/HapticEngine';
 import { useTheme } from '../theme/ThemeProvider';
 import { FontSize, FontWeight, Radius, Spacing } from '../theme/tokens';
 import i18n, { AppLocale, LOCALE_INFO, SUPPORTED_LOCALES } from '../i18n';
@@ -144,7 +145,8 @@ export function MessagingScreen({
   const handleSend = useCallback(() => {
     if (inputText.trim().length === 0) return;
 
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // Medium impact for send message — user-initiated action only
+    triggerHaptic('medium');
 
     const newMessage: Message = {
       id: Date.now().toString(),

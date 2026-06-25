@@ -15,6 +15,7 @@ import {
   simulatePeerTransferAsync,
 } from '../services/PeerTransferService';
 import { FontSize, FontWeight, Radius, Shadow, Spacing } from '../theme/tokens';
+import { trigger as triggerHaptic } from '../haptics/HapticEngine';
 import type { PeerTransferSession, PeerTransferProgress } from '../types';
 
 export function P2PTransferScreen() {
@@ -43,6 +44,8 @@ export function P2PTransferScreen() {
       return;
     }
 
+    // Success pattern (three pulses) when user confirms transfer
+    await triggerHaptic('success');
     setIsTransferring(true);
     const completed = await simulatePeerTransferAsync(session, (progress) => {
       setTransferProgress(progress);

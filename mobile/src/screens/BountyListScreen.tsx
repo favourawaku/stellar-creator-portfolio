@@ -21,6 +21,7 @@ import {
   Alert,
 } from "react-native";
 import * as Haptics from "expo-haptics";
+import { trigger as triggerHaptic } from "../haptics/HapticEngine";
 import { useTheme } from "../theme/ThemeProvider";
 import { InfiniteScrollList } from "../components/InfiniteScrollList";
 import { ProposalModal, BountySummary } from "../components/ProposalModal";
@@ -125,12 +126,12 @@ export function BountyListScreen({
   );
 
   const handleDifficultySelect = useCallback((d: "All" | Difficulty) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    triggerHaptic('light');
     setSelectedDifficulty(d);
   }, []);
 
   const handleCategorySelect = useCallback((c: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    triggerHaptic('light');
     setSelectedCategory(c);
   }, []);
 
@@ -149,6 +150,7 @@ export function BountyListScreen({
         });
         onSelectBounty?.(id);
       } catch (err) {
+        triggerHaptic('error');
         Alert.alert(
           "Error",
           "Failed to load bounty details. Please try again."
@@ -157,6 +159,11 @@ export function BountyListScreen({
     },
     [onSelectBounty]
   );
+
+  /** Call when a new match notification arrives (e.g. WebSocket push). */
+  const handleNewMatchNotification = useCallback(() => {
+    triggerHaptic('heavy'); // heavy impact for new match — #812
+  }, []);
 
   const handleProposalSubmit = useCallback(
     async (bountyId: string, fields: ProposalFields) => {
@@ -168,6 +175,7 @@ export function BountyListScreen({
           timeline: fields.timeline,
         });
 
+        triggerHaptic('success');
         Alert.alert(
           "Success",
           "Your proposal has been submitted successfully!",
@@ -198,7 +206,7 @@ const BountyCard = React.memo(
     colors: any;
   }) => {
     const handlePress = useCallback(() => {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      triggerHaptic('light');
       onPress(item.id);
     }, [item.id, onPress]);
 
@@ -372,12 +380,12 @@ export function BountyListScreen({
   );
 
   const handleDifficultySelect = useCallback((d: "All" | Difficulty) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    triggerHaptic('light');
     setSelectedDifficulty(d);
   }, []);
 
   const handleCategorySelect = useCallback((c: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    triggerHaptic('light');
     setSelectedCategory(c);
   }, []);
 

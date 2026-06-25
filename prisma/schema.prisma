@@ -70,6 +70,7 @@ model User {
   matchFeedback       MatchFeedback[]
   matchNotifications  MatchNotification[]
   auditLogs           AuditLog[]
+  bountyTemplates     BountyTemplate[]
 
   @@index([email])
 }
@@ -605,4 +606,25 @@ model FeatureFlagEvaluation {
 
   @@index([flagId, createdAt])
   @@index([userId, createdAt])
+}
+
+// ── Bounty Templates — Issue #810 ─────────────────────────────────────────────
+
+/// Seed/system-level bounty templates shown in the "Start from template" picker.
+model BountyTemplate {
+  id                String   @id @default(cuid())
+  category          String
+  title             String
+  description       String   @db.Text
+  suggestedBudget   Int
+  suggestedTimeline Int      // days
+  requiredSkills    String[]
+  /// null = system template; userId = user-saved custom template
+  createdByUserId   String?
+  createdBy         User?    @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([category])
+  @@index([createdByUserId])
 }
